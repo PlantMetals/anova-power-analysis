@@ -1,13 +1,13 @@
-# --------------------------------------------------------------------------
+#--------------------------------------------------------------------------
 #
 #             FINDING THE REQUIRED SAMPLE SIZE AND ESTIMATING
 #                       THE POWER OF A ONE-WAY ANOVA
 #
-#                               Version beta
+#                               Version 0.4
 #                                July 2026
 #
 #                          by Dr. Filip Poscic
-#                       https://yourGithubsite.org 
+#                     https://github.com/PlantMetals 
 #
 # --------------------------------------------------------------------------
 
@@ -16,7 +16,7 @@
 # --------------------------------------------------------------------------
 
 author <- "Dr. Filip Poscic"
-link <- "https://yourGithubsite.org"
+link <- "https://github.com/PlantMetals"
 version <- "0.4"
 date <- "July 2026"
 
@@ -73,8 +73,7 @@ print_summary_table <- function(mode, n, final_result, cohens_f,
                                 version, date, target_power = NULL,
                                 method = "delta_ms", user_cohens_f = NULL) {
   
-  cat("┌──[ ANOVA POWER ANALYSIS ]────────────────────[ Version ",
-      version, " - ", date, " ]──┐\n", sep = "")
+  cat("┌──[ ANOVA POWER ANALYSIS ]────────────────────[ Version ", version, " - ", date, " ]──┐\n", sep = "")
   cat(format_blank_line(), "\n", sep = "")
   cat(format_title_line("USER INPUTS"), "\n", sep = "")
   
@@ -271,63 +270,422 @@ draw_final_power_plot <- function(v1, target_power, chart_choice,
 }
 
 # --------------------------------------------------------------------------
-# 8. Main execution loop
+# 8. Batch processing function
+# --------------------------------------------------------------------------
+
+run_batch <- function() {
+  cat("\n--- BATCH MODE ---\n")
+  cat("Input CSV file must have columns:\n")
+  cat("  mode, a, alpha, method, delta, ms_within, cohens_f, target_power, fixed_n\n")
+  cat("  (use NA for unused columns)\n\n")
+  
+  input_file <- readline(prompt = "Enter path to input CSV file: ")
+  if (!file.exists(input_file)) {
+    cat("File not found.\n")
+    return()
+  }
+  
+  output_file <- readline(prompt = "Enter path for output CSV file: ")
+  if (output_file == "") {
+    cat("No output file specified. Aborting.\n")
+    return()
+  }
+  
+  # Read CSV with stringsAsFactors = FALSE to avoid factors
+  batch_data <- tryCatch({
+    read.csv(input_file, stringsAsFactors = FALSE)
+  }, error = function(e) {
+    cat("Error reading CSV:", e$message, "\n")
+    return(NULL)
+  })
+  if (is.null(batch_data)) return()
+  
+  # Required columns
+  required_cols <- c("mode", "a", "alpha", "method", "delta", "ms_within", 
+                     "cohens_f", "target_power", "fixed_n")
+  missing <- setdiff(required_cols, names(batch_data))
+  if (length(missing) > 0) {
+    cat("Missing columns:", paste(missing, collapse=", "), "\n")
+    return()
+  }
+  
+  # Define output columns (input columns + computed ones)
+  out_cols <- c(required_cols, "n", "v1", "v2", "cohens_f_used", "phi", 
+                "lambda", "fcrit", "power", "status")
+  
+  # Pre-allocate a list to store results (more efficient than rbind in loop)
+  results_list <- vector("list", nrow(batch_data))
+  
+  cat("Processing", nrow(batch_data), "rows...\n")
+  
+  for (i in 1:nrow(batch_data)) {
+    row <- batch_data[i, ]
+    status <- "OK"
+    n_out <- NA
+    v1 <- NA
+    v2 <- NA
+    cohens_f_used <- NA
+    phi <- NA
+    lambda <- NA
+    fcrit <- NA
+    power <- NA
+    
+    # --- Validation ---
+    mode <- trimws(tolower(as.character(row$mode)))
+    if (!mode %in% c("required", "fixed")) {
+      status <- paste("Invalid mode:", row$mode)
+      # Build row with NA for computed fields
+      results_list[[i]] <- list(
+        mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+        delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+        target_power = row$target_power, fixed_n = row$fixed_n,
+        n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+        phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+      )
+      next
+    }
+    
+    a <- as.numeric(row$a)
+    if (is.na(a) || a < 2 || a != round(a)) {
+      status <- "a must be integer >= 2"
+      results_list[[i]] <- list(
+        mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+        delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+        target_power = row$target_power, fixed_n = row$fixed_n,
+        n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+        phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+      )
+      next
+    }
+    a <- as.integer(a)
+    
+    alpha <- as.numeric(row$alpha)
+    if (is.na(alpha) || alpha <= 0 || alpha >= 1) {
+      status <- "alpha must be between 0 and 1"
+      results_list[[i]] <- list(
+        mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+        delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+        target_power = row$target_power, fixed_n = row$fixed_n,
+        n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+        phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+      )
+      next
+    }
+    
+    method <- trimws(tolower(as.character(row$method)))
+    if (!method %in% c("delta_ms", "cohens_f")) {
+      status <- paste("Invalid method:", row$method)
+      results_list[[i]] <- list(
+        mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+        delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+        target_power = row$target_power, fixed_n = row$fixed_n,
+        n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+        phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+      )
+      next
+    }
+    
+    if (method == "delta_ms") {
+      delta <- as.numeric(row$delta)
+      ms_within <- as.numeric(row$ms_within)
+      if (is.na(delta) || delta <= 0) {
+        status <- "delta must be positive"
+        results_list[[i]] <- list(
+          mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+          delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+          target_power = row$target_power, fixed_n = row$fixed_n,
+          n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+          phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+        )
+        next
+      }
+      if (is.na(ms_within) || ms_within <= 0) {
+        status <- "ms_within must be positive"
+        results_list[[i]] <- list(
+          mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+          delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+          target_power = row$target_power, fixed_n = row$fixed_n,
+          n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+          phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+        )
+        next
+      }
+      cohens_f_used <- sqrt(delta^2 / (2 * a * ms_within))
+    } else { # cohens_f
+      cohens_f_input <- as.numeric(row$cohens_f)
+      if (is.na(cohens_f_input) || cohens_f_input <= 0) {
+        status <- "cohens_f must be positive"
+        results_list[[i]] <- list(
+          mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+          delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+          target_power = row$target_power, fixed_n = row$fixed_n,
+          n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+          phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+        )
+        next
+      }
+      cohens_f_used <- cohens_f_input
+      delta <- NA
+      ms_within <- NA
+    }
+    
+    v1 <- a - 1
+    
+    # Mode-specific computations
+    if (mode == "required") {
+      target_power <- as.numeric(row$target_power)
+      if (is.na(target_power) || target_power <= 0 || target_power >= 1) {
+        status <- "target_power must be between 0 and 1"
+        results_list[[i]] <- list(
+          mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+          delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+          target_power = row$target_power, fixed_n = row$fixed_n,
+          n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+          phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+        )
+        next
+      }
+      if (method == "delta_ms") {
+        n_out <- find_required_n(a, delta, ms_within, alpha, target_power, v1)
+      } else {
+        n_out <- find_required_n_cohens(a, cohens_f_used, alpha, target_power, v1)
+      }
+      if (is.na(n_out)) {
+        status <- "Required n not found (max_n exceeded)"
+        results_list[[i]] <- list(
+          mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+          delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+          target_power = row$target_power, fixed_n = row$fixed_n,
+          n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+          phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+        )
+        next
+      }
+      if (method == "delta_ms") {
+        res <- compute_power(n_out, a, delta, ms_within, alpha, v1)
+      } else {
+        res <- compute_power_cohens(n_out, a, cohens_f_used, alpha, v1)
+      }
+      phi <- res$phi
+      lambda <- res$lambda
+      power <- res$power
+      fcrit <- res$fcrit
+      v2 <- res$v2
+      # fixed_n is not used
+    } else { # fixed
+      fixed_n <- as.numeric(row$fixed_n)
+      if (is.na(fixed_n) || fixed_n < 2 || fixed_n != round(fixed_n)) {
+        status <- "fixed_n must be integer >= 2"
+        results_list[[i]] <- list(
+          mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+          delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+          target_power = row$target_power, fixed_n = row$fixed_n,
+          n = NA, v1 = NA, v2 = NA, cohens_f_used = NA,
+          phi = NA, lambda = NA, fcrit = NA, power = NA, status = status
+        )
+        next
+      }
+      fixed_n <- as.integer(fixed_n)
+      n_out <- fixed_n
+      if (method == "delta_ms") {
+        res <- compute_power(fixed_n, a, delta, ms_within, alpha, v1)
+      } else {
+        res <- compute_power_cohens(fixed_n, a, cohens_f_used, alpha, v1)
+      }
+      phi <- res$phi
+      lambda <- res$lambda
+      power <- res$power
+      fcrit <- res$fcrit
+      v2 <- res$v2
+      # target_power not used
+    }
+    
+    # Build the successful row
+    results_list[[i]] <- list(
+      mode = row$mode, a = row$a, alpha = row$alpha, method = row$method,
+      delta = row$delta, ms_within = row$ms_within, cohens_f = row$cohens_f,
+      target_power = row$target_power, fixed_n = row$fixed_n,
+      n = n_out, v1 = v1, v2 = v2, cohens_f_used = cohens_f_used,
+      phi = phi, lambda = lambda, fcrit = fcrit, power = power, status = status
+    )
+  }
+  
+  # Convert list of lists to data frame
+  results <- do.call(rbind, lapply(results_list, as.data.frame, stringsAsFactors = FALSE))
+  
+  # Write output
+  tryCatch({
+    write.csv(results, file = output_file, row.names = FALSE)
+    cat("Batch processing completed. Results written to", output_file, "\n")
+  }, error = function(e) {
+    cat("Error writing output file:", e$message, "\n")
+  })
+  
+  # Show summary
+  cat("\nSummary:\n")
+  cat("  Total rows processed:", nrow(results), "\n")
+  cat("  Successful:", sum(results$status == "OK"), "\n")
+  cat("  Errors:   ", sum(results$status != "OK"), "\n")
+  if (sum(results$status != "OK") > 0) {
+    cat("  Error details:\n")
+    print(table(results$status[results$status != "OK"]))
+  }
+}
+
+# --------------------------------------------------------------------------
+# 9. Main execution loop
 # --------------------------------------------------------------------------
 
 repeat {
   cat(
-    "┌───────────────────────────────────────────────────────────────────────────┐\n",
-    "│ Select your choice (1, 2, 3, or 4) and press ENTER                        │\n",
+    "┌──[ ANOVA POWER ANALYSIS ]────────────────────[ Version ", version, " - ", date, " ]──┐\n",
+    "│                                                                           │\n",
+    "│   Finding the required sample size and estimating the power on an ANOVA   │\n",
+    "│                                                                           │\n",
+    "│                                                     by Dr. Filip Poscic   │\n",
+    "├────────────────────────────────────────[ ", link, " ]─┤\n",
+    "│                                                                           │\n",
+    "│ Select your choice (1, 2, 3, 4, or 5) and press ENTER                     │\n",
     "│                                                                           │\n",
     "│  1. Determine required n per group to achieve target power                │\n",
     "│  2. Calculate statistical power for a fixed sample size                   │\n",
-    "│  3. About the statistical methods and references                          │\n",
-    "│  4. Exit the program                                                      │\n",
+    "│  3. Run batch analysis from CSV file (no graphs)                          │\n",
+    "│  4. About the statistical methods, instructions and references            │\n",
+    "│  5. Exit the program                                                      │\n",
     "└───────────────────────────────────────────────────────────────────────────┘\n",
     sep = ""
   )
   
   task_choice <- get_numeric(
     prompt = "",
-    condition = function(x) x %in% c(1, 2, 3, 4),
-    error_msg = "Please enter 1, 2, 3, or 4."
+    condition = function(x) x %in% c(1, 2, 3, 4, 5),
+    error_msg = "Please enter 1, 2, 3, 4, or 5."
   )
   
-  if (task_choice == 4) {
+  if (task_choice == 5) {
     cat("\nExiting program. Goodbye!\n")
     break
   }
   
-  if (task_choice == 3) {
+  if (task_choice == 4) {
     cat(
-      "┌──[ ANOVA POWER ANALYSIS ]───────────────────────[ Version", version, "-", date, "]──┐\n",
+      "┌──[ ANOVA POWER ANALYSIS ]────────────────────────[ Version", version, "-", date, "]──┐\n",
       "│                                                                           │\n",
-      "│ Cohen's f approximation                                                   │\n",
-      "│                                                                           │\n", 
-      "│  This program estimates Cohen's f (a measure of effect size) from the     │\n",
-      "│  user-specified largest expected difference between treatment means (δ),  │\n",
-      "│  number of groups in one-way ANOVA (a), and the within-group mean square  │\n",
-      "│  (MS within) (also known as the error term in ANOVA):                      │\n",
+      "│ INTRODUCTION TO POWER ANALYSIS                                            │\n",
+      "│                                                                           │\n",
+      "│  What is it? Power analysis is a statistical planning tool that           │\n",
+      "│  determines the minimum sample size needed to have a good chance          │\n",
+      "│  ('power') of detecting a true difference between groups, if one exists.  │\n",
+      "│                                                                           │\n",
+      "│  Why do it?                                                               │\n",
+      "│   • Too small n means high risk of missing a real effect (false           │\n",
+      "│     negative). Your experiment would be wasted and the results            │\n",
+      "│     uninformative. This problem is, unfortunately, overrepresented in     │\n",
+      "│     virtually every branch of modern-day science.                         │\n",
+      "│   • Too large n means waste of resources, time, or (in animal/clinical    │\n",
+      "│     studies) excessive use of subjects.                                   │\n",
+      "│                                                                           │\n",
+      "│  It ensures your results are reliable and defensible. A low-power study   │\n",
+      "│  that finds 'no significant difference' is inconclusive – it does NOT     │\n",
+      "│  prove that no effect exists, only that your study was possibly too small │\n",
+      "│  to detect it. Power analysis protects you from this trap. In any case it │\n",
+      "│  is good practice to take advantage also of, for example, equivalence     │\n",
+      "│  testing (not part of this script) to confidently conclude there is no    │\n",
+      "│  meaningful effect.                                                       │\n",
+      "├───────────────────────────────────────────────────────────────────────────┤\n",
+      "│                                                                           │\n",
+      "│ STATISTICAL VOCABULARY                                                    │\n",
+      "│                                                                           │\n",
+      "│  n       : Sample size per group (number of independent replicates).      │\n",
+      "│  alpha   : Significance level (Type I error rate). Probability of         │\n",
+      "│            falsely rejecting H_0 when it is true (e.g., 0.05).            │\n",
+      "│  beta    : Type II error rate. Probability of failing to reject a         │\n",
+      "│            false H_0.                                                     │\n",
+      "│  power   : Power = 1 - beta. Probability of correctly rejecting H_0       │\n",
+      "│            (detecting a true effect). Target is often 0.80 or 0.90.       │\n",
+      "│  v1      : Numerator degrees of freedom = a - 1 (between groups).         │\n",
+      "│            Together with v2, they define the shape of the F-distribution. │\n",
+      "│  v2      : Denominator degrees of freedom = a * (n - 1) (within groups).  │\n",
+      "│            Larger v2 increases power for a given effect size.             │\n",
+      "│  phi     : Non-centrality parameter [sqrt(lambda/a)]. Measures the        │\n",
+      "│            overall effect magnitude, combining sample size and effect     │\n",
+      "│            size.                                                          │\n",
+      "│  lambda  : Non-centrality parameter = a * phi^2. Used in the non-central  │\n",
+      "│            F-distribution to compute power.                               │\n",
+      "│  F_crit  : Critical F-value from the central F-distribution at alpha.     │\n",
+      "│            The test rejects H_0 if observed F > F_crit.                   │\n",
+      "│                                                                           │\n",
+      "│  Graphs – what they show and how to read them:                            │\n",
+      "│   The graphs display power (y-axis) as a function of non-centrality phi   │\n",
+      "│   (x-axis). As phi increases (larger sample size or stronger effect),     │\n",
+      "│   power rises. The bold blue curve represents the power for your          │\n",
+      "│   calculated sample size (n). The red dashed line marks your target       │\n",
+      "│   power. The green annotation shows the exact phi and power at the        │\n",
+      "│   optimal n. In the animation mode, grey curves show how power changes    │\n",
+      "│   as n increases step by step, helping you visualise the search process.  │\n",
+      "│                                                                           │\n",
+      "│  Two graph styles:                                                        │\n",
+      "│   1. Pearson & Hartley (1951) – a classic transformation that uses        │\n",
+      "│      -log10(1-power) on the y-axis. This linearises the curves and        │\n",
+      "│      was traditionally used to read power from printed charts.            │\n",
+      "│   2. Standard log-scale – power is plotted on a logarithmic axis from     │\n",
+      "│      0.10 to 1.00. This makes high-power values (e.g., 0.90 vs 0.95)      │\n",
+      "│      easier to distinguish.                                               │\n",
+      "│                                                                           │\n",
+      "│  Cohen's f approximation                                                  │\n",
+      "│   This program estimates Cohen's f (a measure of effect size) from the    │\n",
+      "│   user-specified largest expected difference between treatment means (δ), │\n",
+      "│   number of groups in one-way ANOVA (a), and the within-group mean square │\n",
+      "│   (MS within) (also known as the error term in ANOVA):                    │\n",
       "│                                                                           │\n",
       "│           Cohen's f approximation = √[δ² / (2 · a · MS within)]           │\n",
       "│                                                                           │\n",
-      "│  This is the general approximate relationship given by Sokal & Rohlf      │\n",
-      "│  (2012, Box 9.12). It does NOT assume a particular pattern of treatment   │\n",
-      "│  means. When the means are in fact equally spaced, this approximation     │\n",
-      "│  yields a conservative (larger) estimate of δ (i.e., it overestimates     │\n",
-      "│  the true detectable difference and thus leads to a slightly larger       │\n",
-      "│  required sample size than the exact equal-spacing formula).              │\n",
+      "│   This is the general approximate relationship given by Sokal & Rohlf     │\n",
+      "│   (2012, Box 9.12). It does not assume a particular pattern of treatment  │\n",
+      "│   means. When the means are in fact equally spaced, this approximation    │\n",
+      "│   yields a conservative (larger) estimate of δ (i.e., it overestimates    │\n",
+      "│   the true detectable difference and thus leads to a slightly larger      │\n",
+      "│   required sample size than the exact equal-spacing formula).             │\n",
       "│                                                                           │\n",
-      "│  The exact definition of Cohen's f is based on the standard deviation     │\n",
-      "│  (σ²) of all treatment means (μᵢ) around the grand mean (μ):              │\n",
+      "│   The exact definition of Cohen's f is based on the standard deviation    │\n",
+      "│   (σ²) of all treatment means (μᵢ) around the grand mean (μ):             │\n",
       "│                                                                           │\n",
       "│                Cohen's f exact = √[Σ(μᵢ − μ)² / (a · σ²)]                 │\n",
       "│                                                                           │\n",
-      "│  The approximation used here is therefore a conservative rule of thumb    │\n",
-      "│  for planning experiments when the exact pattern of means is unknown.     │\n",
-      "├───────────────────────────────────────────────────────────────────────────┤\n",   
+      "│   The approximation used here is therefore a conservative rule of thumb   │\n",
+      "│   for planning experiments when the exact pattern of means is unknown.    │\n",
+      "├───────────────────────────────────────────────────────────────────────────┤\n",
       "│                                                                           │\n",
-      "│ References                                                                │\n",
+      "│ INSTRUCTIONS FOR BATCH MODE                                               │\n",
+      "│                                                                           │\n",
+      "│  Following is the input file preparation explanation. To use batch mode   │\n",
+      "│  (option 3), prepare a CSV file with these columns:                       │\n",
+      "│                                                                           │\n",
+      "│                mode, a, alpha, method, delta, ms_within,                  │\n",
+      "│                cohens_f, target_power, fixed_n                            │\n",
+      "│                                                                           │\n",
+      "│   • mode:         'required' or 'fixed'                                   │\n",
+      "│                (required means you search for minimum n at desired power, │\n",
+      "│                 fixed means n is already fixed and you search for power)  │\n",
+      "│   • a:            integer >= 2                                            │\n",
+      "│   • alpha:        0 < alpha < 1                                           │\n",
+      "│   • method:       'delta_ms' or 'cohens_f'                                │\n",
+      "│   • delta:        positive (if method=delta_ms), else NA or empty (,,)    │\n",
+      "│   • ms_within:    positive (if method=delta_ms), else NA or empty (,,)    │\n",
+      "│   • cohens_f:     positive (if method=cohens_f), else NA or empty (,,)    │\n",
+      "│   • target_power: 0 < power < 1 (required only if mode='required')        │\n",
+      "│   • fixed_n:      integer >= 2 (required only if mode='fixed')            │\n",
+      "│                                                                           │\n",
+      "│  Example rows:                                                            │\n",
+      "│                 required,3,0.05,delta_ms,2,1.5,,0.8,                      │\n",
+      "│                 fixed,4,0.01,cohens_f,,,0.35,,15                          │\n",
+      "│                                                                           │\n",
+      "│  The output CSV will include all input columns plus computed results:     │\n",
+      "│  n, v1, v2, cohens_f_used, phi, lambda, fcrit, power, and a status column │\n",
+      "│  indicating success or error for each row. If error check your inputs.    │\n",
+      "├───────────────────────────────────────────────────────────────────────────┤\n",
+      "│                                                                           │\n",
+      "│ REFERENCES                                                                │\n",
       "│                                                                           │\n",
       "│  Pearson, E. S. & Hartley H. O. Charts of the power function for analysis │\n",
       "│    of variance tests, derived from the non-central F-distribution.        │\n",
@@ -336,9 +694,32 @@ repeat {
       "│  Sokal, R. R. & Rohlf, F. J. Biometry: The principles and practice of     │\n",
       "│   statistics in biological research, 4th ed. W.H. Freeman and Company,    │\n",
       "│   New York, NY, USA (2012).                                               │\n",
+      "├───────────────────────────────────────────────────────────────────────────┤\n",
+      "│                                                                           │\n",
+      "│ ABOUT THE AUTHOR                                                          │\n",
+      "│                                                                           │\n",
+      "│  I am a plant scientist and educator with a focus on abiotic stress       │\n",
+      "│  responses, phytoremediation, biometry, and sustainable agriculture.      │\n",
+      "│  My research investigates how plants adapt to metal toxicity, nutrient    │\n",
+      "│  deficiencies, drought, salinity, and climate extremes – using these      │\n",
+      "│  insights to develop eco-friendly strategies for soil health and crop     │\n",
+      "│  resilience. The ultimate goal is to support food security and            │\n",
+      "│  environmental restoration.                                               │\n",
+      "│                                                                           │\n",
+      "│  This software is completely free and open source. You can find it on     │\n",
+      "│  my GitHub channel: https://github.com/PlantMetals                        │\n",
+      "│  For questions or feedback, please reach me at:                           │\n",
+      "│  Filip.Poscic@gmail.com  or  BlueSky @filipposcic.bsky.social             │\n",
       "└───────────────────────────────────────────────────────────────────────────┘\n",
       sep = ""
     )
+    next
+  }
+  
+  if (task_choice == 3) {
+    run_batch()
+    cat("\nPress ENTER to return to the main menu...")
+    readline()
     next
   }
   
