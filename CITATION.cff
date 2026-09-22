@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Poščić"
+  given-names: "Filip"
+  orcid: "https://orcid.org/0000-0002-6642-1532"
+title: "ANOVA Power Analysis R Script"
+version: 1.00
+date-released: 2026-09-22
+url: "https://github.com/PlantMetals/anova-power-analysis"
+# doi: I still need to add it 
