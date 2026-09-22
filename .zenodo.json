@@ -1,0 +1,21 @@
+{
+  "title": "ANOVA Power Analysis R Script",
+  "description": "An R script for determining required sample size and estimating the power of a one-way ANOVA.",
+  "creators": [
+    {
+      "name": "Poščić, Filip",
+      "orcid": "0000-0002-6642-1532",
+      "affiliation": "Timiryazev Institute of Plant Physiology"
+    }
+  ],
+  "license": "mit",
+  "upload_type": "software",
+  "access_right": "open",
+  "keywords": [
+    "power analysis",
+    "ANOVA",
+    "sample size",
+    "R",
+    "statistics"
+  ]
+}
