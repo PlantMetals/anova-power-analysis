@@ -3,8 +3,8 @@
 #             FINDING THE REQUIRED SAMPLE SIZE AND ESTIMATING
 #                       THE POWER OF A ONE-WAY ANOVA
 #
-#                               Version 0.4
-#                                July 2026
+#                               Version 1.00
+#                              September 2026
 #
 #                          by Dr. Filip Poscic
 #                     https://github.com/PlantMetals 
@@ -17,8 +17,8 @@
 
 author <- "Dr. Filip Poscic"
 link <- "https://github.com/PlantMetals"
-version <- "0.4"
-date <- "July 2026"
+version <- "1.00"
+date <- "September 2026"
 
 # --------------------------------------------------------------------------
 # 2. Helper function for correct input
@@ -277,15 +277,15 @@ run_batch <- function() {
   cat("\n--- BATCH MODE ---\n")
   cat("Input CSV file must have columns:\n")
   cat("  mode, a, alpha, method, delta, ms_within, cohens_f, target_power, fixed_n\n")
-  cat("  (use NA for unused columns)\n\n")
+  cat("  Please refer to the instructions\n\n")
   
-  input_file <- readline(prompt = "Enter path to input CSV file: ")
+  input_file <- readline(prompt = "Enter path and file name (with .csv) to input CSV file: ")
   if (!file.exists(input_file)) {
     cat("File not found.\n")
     return()
   }
   
-  output_file <- readline(prompt = "Enter path for output CSV file: ")
+  output_file <- readline(prompt = "Enter path and file name (with .csv) for output CSV file: ")
   if (output_file == "") {
     cat("No output file specified. Aborting.\n")
     return()
@@ -638,7 +638,7 @@ repeat {
       "│   number of groups in one-way ANOVA (a), and the within-group mean square │\n",
       "│   (MS within) (also known as the error term in ANOVA):                    │\n",
       "│                                                                           │\n",
-      "│           Cohen's f approximation = √[δ² / (2 · a · MS within)]           │\n",
+      "│           Cohen's f approximation = √[δ² / (2 · a · MS-within)]           │\n",
       "│                                                                           │\n",
       "│   This is the general approximate relationship given by Sokal & Rohlf     │\n",
       "│   (2012, Box 9.12). It does not assume a particular pattern of treatment  │\n",
@@ -647,13 +647,19 @@ repeat {
       "│   the true detectable difference and thus leads to a slightly larger      │\n",
       "│   required sample size than the exact equal-spacing formula).             │\n",
       "│                                                                           │\n",
-      "│   The exact definition of Cohen's f is based on the standard deviation    │\n",
-      "│   (σ²) of all treatment means (μᵢ) around the grand mean (μ):             │\n",
+      "│   The exact definition of Cohen's f is based on the pooled standard       │\n",
+      "│   deviation (σ²) of all treatment means (μᵢ) around the grand mean (μ):   │\n",
       "│                                                                           │\n",
-      "│                Cohen's f exact = √[Σ(μᵢ − μ)² / (a · σ²)]                 │\n",
+      "│                Cohen's f exact = √{Σ[pᵢ·(μᵢ − μ)²] / σ²}                  │\n",
       "│                                                                           │\n",
-      "│   The approximation used here is therefore a conservative rule of thumb   │\n",
-      "│   for planning experiments when the exact pattern of means is unknown.    │\n",
+      "│   where pᵢ = nᵢ/N, nᵢ is the sample size of group i, and N is the total   │\n",
+      "│   sample size across all groups. This is equal to:                        │\n",
+      "│                                                                           │\n",
+      "│                Cohen's f exact = √(SS-among / SS-within)                  │\n",
+      "│                                                                           │\n",
+      "│   Thus, Cohen's f approximation used in its indirect calculation, by      │\n",
+      "│   providing δ and MS-witihin, is a conservative rule of thumb for         │\n",
+      "│   planning experiments when the exact pattern of means is unknown.        │\n",
       "├───────────────────────────────────────────────────────────────────────────┤\n",
       "│                                                                           │\n",
       "│ INSTRUCTIONS FOR BATCH MODE                                               │\n",
